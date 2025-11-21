@@ -4,6 +4,7 @@ const jwt = require('jsonwebtoken');
 const cors = require('cors');
 const { Pool } = require('pg');
 const validators = require('./validators');
+const { generateLoanPDF } = require('./pdf-invoice-generator');
 
 const app = express();
 app.use(express.json());
@@ -420,7 +421,8 @@ app.post('/create-loan', async (req, res) => {
     const loan = validators.formatLoanResponse(result.rows[0]);
 
     res.status(201).json({ 
-      loan 
+      loan,
+      pdf_url: `/loan-pdf/${result.rows[0].id}`
     });
   } catch (err) {
     console.error('Error creating loan:', err);
@@ -540,8 +542,11 @@ app.get('/search-loan', async (req, res) => {
       return res.status(404).json({ message: 'No loans found' });
     }
 
-    // Format response with snake_case fields
-    const formattedLoans = result.rows.map(loan => validators.formatLoanResponse(loan));
+    // Format response with snake_case fields and add PDF links
+    const formattedLoans = result.rows.map(loan => ({
+      ...validators.formatLoanResponse(loan),
+      pdf_url: `/loan-pdf/${loan.id}`
+    }));
 
     res.json(formattedLoans);
   } catch (err) {
@@ -1020,6 +1025,73 @@ app.get('/today-shift-summary/:userId', async (req, res) => {
 
 
 // ======================== END SHIFT MANAGEMENT ========================
+
+// ======================== PDF INVOICE GENERATION ========================
+
+// Get Loan as PDF Invoice
+app.get('/loan-pdf/:loanId', async (req, res) => {
+  try {
+    const { loanId } = req.params;
+
+    // Fetch loan details
+    const result = await pool.query('SELECT * FROM loans WHERE id = $1', [loanId]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: 'Loan not found' });
+    }
+
+    const loan = result.rows[0];
+
+    // Generate PDF
+    const pdfBuffer = await generateLoanPDF(loan);
+
+    // Send PDF with appropriate headers
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="loan_${loan.id}_${loan.transaction_number}.pdf"`
+    );
+    res.setHeader('Content-Length', pdfBuffer.length);
+
+    res.send(pdfBuffer);
+  } catch (err) {
+    console.error('Error generating PDF:', err);
+    res.status(500).json({ message: 'Error generating PDF', error: err.message });
+  }
+});
+
+// Get Search Results as PDF (multiple loans on one document)
+app.post('/loans-pdf', async (req, res) => {
+  try {
+    const { loanIds } = req.body;
+
+    if (!loanIds || !Array.isArray(loanIds) || loanIds.length === 0) {
+      return res.status(400).json({ message: 'Provide loanIds array' });
+    }
+
+    // Fetch all loans
+    const placeholders = loanIds.map((_, i) => `$${i + 1}`).join(',');
+    const result = await pool.query(`SELECT * FROM loans WHERE id IN (${placeholders})`, loanIds);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: 'No loans found' });
+    }
+
+    // Generate PDF for first loan (or create a summary if needed)
+    const pdfBuffer = await generateLoanPDF(result.rows[0]);
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="pawnflow_loans_${Date.now()}.pdf"`);
+    res.setHeader('Content-Length', pdfBuffer.length);
+
+    res.send(pdfBuffer);
+  } catch (err) {
+    console.error('Error generating PDFs:', err);
+    res.status(500).json({ message: 'Error generating PDFs', error: err.message });
+  }
+});
+
+// ======================== END PDF GENERATION ========================
 
 // ---------------------------- START SERVER ----------------------------
 app.listen(5000, () => {
