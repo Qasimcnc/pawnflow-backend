@@ -5,6 +5,7 @@ const cors = require('cors');
 const { Pool } = require('pg');
 const validators = require('./validators');
 const { generateLoanPDF } = require('./pdf-invoice-generator');
+require('dotenv').config();
 
 const app = express();
 app.use(express.json());
