@@ -183,21 +183,26 @@ function formatLoanResponse(loanObject) {
 
   // Ensure all response fields are in snake_case
   const snakeCaseFields = [
-    'first_name', 'last_name', 'home_phone', 'mobile_phone', 'birthdate',
-    'referral', 'identification_info', 'address', 'customer_name', 'customer_number',
-    'loan_amount', 'interest_rate', 'interest_amount', 'total_payable_amount',
-    'loan_issued_date', 'loan_term', 'due_date', 'transaction_number',
-    'collateral_description', 'customer_note', 'remaining_balance', 'created_by'
+    'id', 'first_name', 'last_name', 'email', 'home_phone', 'mobile_phone', 
+    'birthdate', 'referral', 'identification_info', 'id_type', 'id_number',
+    'street_address', 'city', 'state', 'zipcode', 'address', 'customer_name', 
+    'customer_number', 'loan_amount', 'interest_rate', 'interest_amount', 
+    'total_payable_amount', 'loan_issued_date', 'loan_term', 'due_date', 
+    'transaction_number', 'status', 'collateral_description', 'customer_note', 
+    'remaining_balance', 'created_by', 'created_by_user_id', 'created_by_username',
+    'item_category', 'item_description', 'issued_date', 'redeemed_date', 
+    'forfeited_date', 'is_redeemed', 'is_forfeited', 'created_at', 'updated_at'
   ];
 
-  // Remove any camelCase versions if they exist
-  for (const key of Object.keys(formatted)) {
-    if (!snakeCaseFields.includes(key) && key.includes('_') === false) {
-      delete formatted[key];
+  // Create a new object with only allowed fields
+  const result = {};
+  for (const key of snakeCaseFields) {
+    if (key in formatted) {
+      result[key] = formatted[key];
     }
   }
 
-  return formatted;
+  return result;
 }
 
 module.exports = {
