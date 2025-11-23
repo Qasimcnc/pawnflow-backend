@@ -13,51 +13,53 @@ app.use(cors());
 
 // PostgreSQL connection
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL || 'postgresql://postgres:1234@localhost:5432/pawn_shop',
+  connectionString: process.env.DATABASE_URL || 'postgresql://postgres:123@localhost:5432/pawn_shop',
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
 });
 
 const cron = require('node-cron');
 
-// This cron job will run every day at midnight (00:00)
-cron.schedule('0 0 * * *', async () => {  
-  try {
-    const result = await pool.query(
-      'SELECT * FROM loans WHERE due_date <= CURRENT_DATE AND status = $1',
-      ['active']
-    );
-
-    const loansDue = result.rows;
-
-    for (let loan of loansDue) {
-      const paymentResult = await pool.query(
-        'SELECT SUM(payment_amount) AS total_paid FROM payment_history WHERE loan_id = $1',
-        [loan.id]
-      );
-      const totalPaid = paymentResult.rows[0].total_paid || 0;
-
-      if (totalPaid >= loan.interest_amount) {
-        // Extend the due date by 30 days if interest is paid
-        const extendedDueDate = new Date(loan.due_date);
-        extendedDueDate.setDate(extendedDueDate.getDate() + 30);  // Extend by 30 days
-
-        await pool.query(
-          'UPDATE loans SET due_date = $1 WHERE id = $2 RETURNING *',
-          [extendedDueDate.toISOString().slice(0, 10), loan.id]
+// only schedule cron when explicitly enabled (avoid in serverless)
+if (process.env.ENABLE_CRON_JOBS === 'true') {
+    // This cron job will run every day at midnight (00:00)
+    cron.schedule('0 0 * * *', async () => {  
+      try {
+        const result = await pool.query(
+          'SELECT * FROM loans WHERE due_date <= CURRENT_DATE AND status = $1',
+          ['active']
         );
-      } else {
-        // If interest is not paid, mark the loan as overdue
-        await pool.query(
-          'UPDATE loans SET status = $1 WHERE id = $2 RETURNING *',
-          ['overdue', loan.id]
-        );
+
+        const loansDue = result.rows;
+
+        for (let loan of loansDue) {
+          const paymentResult = await pool.query(
+            'SELECT SUM(payment_amount) AS total_paid FROM payment_history WHERE loan_id = $1',
+            [loan.id]
+          );
+          const totalPaid = paymentResult.rows[0].total_paid || 0;
+
+          if (totalPaid >= loan.interest_amount) {
+            // Extend the due date by 30 days if interest is paid
+            const extendedDueDate = new Date(loan.due_date);
+            extendedDueDate.setDate(extendedDueDate.getDate() + 30);  // Extend by 30 days
+
+            await pool.query(
+              'UPDATE loans SET due_date = $1 WHERE id = $2 RETURNING *',
+              [extendedDueDate.toISOString().slice(0, 10), loan.id]
+            );
+          } else {
+            // If interest is not paid, mark the loan as overdue
+            await pool.query(
+              'UPDATE loans SET status = $1 WHERE id = $2 RETURNING *',
+              ['overdue', loan.id]
+            );
+          }
+        }
+      } catch (err) {
+        console.error('Error checking due date:', err);
       }
-    }
-  } catch (err) {
-    console.error('Error checking due date:', err);
-  }
-});
-
+    });
+}
 
 
 
@@ -95,7 +97,7 @@ app.post('/login', async (req, res) => {
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) return res.status(400).json({ message: 'Invalid credentials' });
 
-    const token = jwt.sign({ id: user.id, role: user.role_id }, 'jwt_secret', { expiresIn: '1h' });
+    const token = jwt.sign({ id: user.id, role: user.role_id }, process.env.JWT_SECRET || 'jwt_secret', { expiresIn: '1h' });
 
     res.json({ token });
   } catch (err) {
@@ -1107,6 +1109,12 @@ app.post('/loans-pdf', async (req, res) => {
 
 // ---------------------------- START SERVER ----------------------------
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
-});
+
+// only start listening when server.js is run directly (not when required by serverless wrapper)
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`Server is running on port ${PORT}`);
+  });
+}
+
+module.exports = app;
