@@ -1,3 +1,11 @@
+node_modules/.bin/bcrypt
+/node_modules
+/node_modules
+/node_modules
+/node_modules/unicode-trie
+/node_modules
+node_modules/unicode-trie/package.json
+node_modules/unicode-trie/builder.js
 # Environment variables
 .env
 .env.local

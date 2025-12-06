@@ -1,0 +1,13 @@
+name: Daily Check Due Date
+on:
+  schedule:
+    - cron: '0 0 * * *'  # every day at 00:00 UTC
+  workflow_dispatch:
+
+jobs:
+  call-check-due-date:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call check-due-date endpoint
+        run: |
+          curl -sS -X POST "${{ secrets.BACKEND_URL }}/check-due-date" -H "Content-Type: application/json"
